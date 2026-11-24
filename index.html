@@ -8,6 +8,60 @@
   <body>
     <main id="stage" class="stage"></main>
 
+    <aside id="perf-stats" class="stats-hud" aria-label="Statystyki wydajności">
+      <div class="stats-header">
+        <div class="stats-title-row">
+          <span class="stats-dot" aria-hidden="true"></span>
+          <span class="stats-title">Statystyki</span>
+          <span id="stat-renderer" class="stats-badge">WebGL</span>
+        </div>
+        <button
+          id="toggle-stats-btn"
+          class="stats-toggle-btn"
+          type="button"
+          aria-expanded="true"
+          aria-controls="stats-body"
+        >
+          Ukryj
+        </button>
+      </div>
+
+      <dl id="stats-body" class="stats-grid">
+        <div class="stat-item">
+          <dt>FPS</dt>
+          <dd id="stat-fps">--</dd>
+        </div>
+        <div class="stat-item">
+          <dt>Klatka / GPU (ms)</dt>
+          <dd id="stat-frame-ms">-- / --</dd>
+        </div>
+        <div class="stat-item">
+          <dt>Draw calls</dt>
+          <dd id="stat-draw-calls" class="stat-highlight">--</dd>
+        </div>
+        <div class="stat-item">
+          <dt>Trójkąty</dt>
+          <dd id="stat-triangles">--</dd>
+        </div>
+        <div class="stat-item">
+          <dt>Sprite'y</dt>
+          <dd id="stat-sprites">--</dd>
+        </div>
+        <div class="stat-item">
+          <dt>Meshe</dt>
+          <dd id="stat-meshes">0</dd>
+        </div>
+        <div class="stat-item">
+          <dt>VRAM</dt>
+          <dd id="stat-vram">-- MB</dd>
+        </div>
+        <div class="stat-item">
+          <dt>JS Heap</dt>
+          <dd id="stat-heap">--</dd>
+        </div>
+      </dl>
+    </aside>
+
     <aside class="hud-dock" aria-label="Sterowanie sceną">
       <div class="hud-header">
         <div class="hud-title-wrap">

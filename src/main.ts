@@ -23,11 +23,42 @@ if (!stageEl) {
 
 const progressBar = document.getElementById('loop-progress-bar');
 
-const scene = new GraveyardScene(stageEl, settings, (progress) => {
-  if (progressBar) {
-    progressBar.style.transform = `scaleX(${progress.toFixed(4)})`;
+const statRenderer = document.getElementById('stat-renderer');
+const statFps = document.getElementById('stat-fps');
+const statFrameMs = document.getElementById('stat-frame-ms');
+const statDrawCalls = document.getElementById('stat-draw-calls');
+const statTriangles = document.getElementById('stat-triangles');
+const statSprites = document.getElementById('stat-sprites');
+const statMeshes = document.getElementById('stat-meshes');
+const statVram = document.getElementById('stat-vram');
+const statHeap = document.getElementById('stat-heap');
+
+const scene = new GraveyardScene(
+  stageEl,
+  settings,
+  (progress) => {
+    if (progressBar) {
+      progressBar.style.transform = `scaleX(${progress.toFixed(4)})`;
+    }
+  },
+  (stats) => {
+    if (statRenderer) statRenderer.textContent = stats.rendererType;
+    if (statFps) statFps.textContent = String(stats.fps);
+    if (statFrameMs) {
+      statFrameMs.textContent = `${stats.frameMs.toFixed(1)} / ${stats.renderMs.toFixed(2)}`;
+    }
+    if (statDrawCalls) statDrawCalls.textContent = String(stats.drawCalls);
+    if (statTriangles) statTriangles.textContent = String(stats.triangles);
+    if (statSprites) statSprites.textContent = String(stats.activeSprites);
+    if (statMeshes) statMeshes.textContent = String(stats.meshCount);
+    if (statVram) {
+      statVram.textContent = `${stats.vramMB.toFixed(2)} MB (${stats.textureCount})`;
+    }
+    if (statHeap) {
+      statHeap.textContent = stats.jsHeapMB !== null ? `${stats.jsHeapMB.toFixed(1)} MB` : 'n/d';
+    }
   }
-});
+);
 
 void scene.init();
 
@@ -158,6 +189,20 @@ togglePanelBtn?.addEventListener('click', () => {
   togglePanelBtn.textContent = nextExpanded ? 'Ukryj panel' : 'Sterowanie';
   panelBody.hidden = !nextExpanded;
   hudDock.classList.toggle('is-collapsed', !nextExpanded);
+});
+
+// Stats HUD collapse / expand toggle
+const statsHud = document.getElementById('perf-stats');
+const toggleStatsBtn = document.getElementById('toggle-stats-btn') as HTMLButtonElement | null;
+const statsBody = document.getElementById('stats-body');
+toggleStatsBtn?.addEventListener('click', () => {
+  if (!statsBody || !statsHud) return;
+  const isExpanded = toggleStatsBtn.getAttribute('aria-expanded') === 'true';
+  const nextExpanded = !isExpanded;
+  toggleStatsBtn.setAttribute('aria-expanded', String(nextExpanded));
+  toggleStatsBtn.textContent = nextExpanded ? 'Ukryj' : 'Pokaż';
+  statsBody.hidden = !nextExpanded;
+  statsHud.classList.toggle('is-collapsed', !nextExpanded);
 });
 
 window.addEventListener('beforeunload', () => {

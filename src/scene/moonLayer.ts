@@ -8,6 +8,8 @@ export interface MoonLayerController {
   update(theta: number, state: ResolvedSceneState): void;
 }
 
+const RAY_SIZE_RATIO = 256 / 124;
+
 export function createMoonLayer(textures: SceneTextures): MoonLayerController {
   const container = new Container();
 
@@ -54,8 +56,8 @@ export function createMoonLayer(textures: SceneTextures): MoonLayerController {
       angleAmp: cfg.amp,
       freq: cfg.freq,
       phase: cfg.phase,
-      baseScaleX: cfg.sx,
-      baseScaleY: cfg.sy,
+      baseScaleX: cfg.sx * RAY_SIZE_RATIO,
+      baseScaleY: cfg.sy * RAY_SIZE_RATIO,
       baseAlpha: cfg.alpha,
     });
   }
@@ -81,32 +83,46 @@ export function createMoonLayer(textures: SceneTextures): MoonLayerController {
       const pulse = 0.90 + 0.10 * Math.sin(theta * 2);
       const pulseSlow = 0.93 + 0.07 * Math.cos(theta);
 
-      // Attenuate moon glow mildly during heavy fog/storm overcast
       const weatherAtten = 1 - state.stormDarken * 0.35 - Math.max(0, state.fogDensity - 0.5) * 0.25;
       const visibility = glow * Math.max(0.35, weatherAtten);
 
-      outerHalo.tint = haloTint;
-      outerHalo.width = 660 * pulseSlow;
-      outerHalo.height = 560 * pulseSlow;
-      outerHalo.alpha = (0.34 + 0.14 * state.eclipseAmount) * visibility;
+      const outerAlpha = (0.34 - 0.14 * state.eclipseAmount) * visibility;
+      outerHalo.visible = outerAlpha > 0.005;
+      if (outerHalo.visible) {
+        outerHalo.tint = haloTint;
+        outerHalo.width = 660 * pulseSlow;
+        outerHalo.height = 560 * pulseSlow;
+        outerHalo.alpha = outerAlpha;
+      }
 
-      innerHalo.tint = haloTint;
-      innerHalo.width = (MOON_RADIUS * 2.75) * pulse;
-      innerHalo.height = (MOON_RADIUS * 2.75) * pulse;
-      innerHalo.alpha = (0.30 + 0.26 * state.eclipseAmount) * visibility;
+      const innerAlpha = 0.30 * (1 - state.eclipseAmount * 0.88) * visibility;
+      innerHalo.visible = innerAlpha > 0.005;
+      if (innerHalo.visible) {
+        innerHalo.tint = haloTint;
+        innerHalo.width = MOON_RADIUS * 2.75 * pulse;
+        innerHalo.height = MOON_RADIUS * 2.75 * pulse;
+        innerHalo.alpha = innerAlpha;
+      }
 
       for (const r of rays) {
         const breath = 0.72 + 0.28 * Math.sin(theta * r.freq + r.phase);
+        const alpha = r.baseAlpha * breath * visibility * (1 - state.eclipseAmount * 0.78);
+        r.sprite.visible = alpha > 0.005;
+        if (!r.sprite.visible) continue;
         r.sprite.rotation = r.baseAngle + Math.sin(theta * r.freq + r.phase) * r.angleAmp;
         r.sprite.scale.set(r.baseScaleX, r.baseScaleY);
         r.sprite.tint = state.eclipseAmount > 0.5 ? haloTint : (r.freq === 2 ? mistTint : haloTint);
-        r.sprite.alpha = r.baseAlpha * breath * visibility * (1 - state.eclipseAmount * 0.35);
+        r.sprite.alpha = alpha;
       }
 
       const glintPulse = 0.7 + 0.3 * Math.sin(theta * 3 + 0.5);
-      diamondGlint.width = 96 * glintPulse;
-      diamondGlint.height = 96 * glintPulse;
-      diamondGlint.alpha = state.eclipseAmount * 0.52 * glintPulse * Math.max(0.25, glow);
+      const glintAlpha = state.eclipseAmount * 0.52 * glintPulse * Math.max(0.25, glow);
+      diamondGlint.visible = glintAlpha > 0.005;
+      if (diamondGlint.visible) {
+        diamondGlint.width = 96 * glintPulse;
+        diamondGlint.height = 96 * glintPulse;
+        diamondGlint.alpha = glintAlpha;
+      }
     },
   };
 }

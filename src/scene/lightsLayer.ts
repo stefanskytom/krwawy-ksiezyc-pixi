@@ -1,14 +1,12 @@
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Sprite } from 'pixi.js';
 import { GRAVESTONE_SPOTS, WORLD_H, WORLD_W } from './constants';
 import { rgbTupleToHex, type ResolvedSceneState } from '../state/sceneState';
 import type { SceneTextures } from './textures';
 
 interface CandleUnit {
-  wax: Graphics;
+  wax: Sprite;
   flame: Sprite;
   halo: Sprite;
-  baseX: number;
-  baseY: number;
   freqA: number;
   freqB: number;
   phase: number;
@@ -29,20 +27,19 @@ interface WispUnit {
 }
 
 export interface LightsLayerController {
-  container: Container;
+  normalContainer: Container;
+  addContainer: Container;
   update(theta: number, state: ResolvedSceneState, cursorUV: [number, number]): void;
 }
 
 export function createLightsLayer(textures: SceneTextures): LightsLayerController {
-  const container = new Container();
+  const normalContainer = new Container();
+  const addContainer = new Container();
 
   const candles: CandleUnit[] = GRAVESTONE_SPOTS.map((spot, idx) => {
-    const wax = new Graphics();
-    wax
-      .roundRect(-2.5, -10, 5, 11, 1.5)
-      .fill({ color: 0xd9cbb8, alpha: 0.9 })
-      .rect(-0.5, -13, 1, 3.5)
-      .fill({ color: 0x2b221e });
+    const wax = new Sprite(textures.candleWax);
+    wax.anchor.set(0.5, 22 / 24);
+    wax.scale.set(0.5);
     wax.position.set(spot.x, spot.y);
 
     const halo = new Sprite(textures.glow);
@@ -56,14 +53,13 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
     flame.position.set(spot.x, spot.y - 12);
     flame.blendMode = 'add';
 
-    container.addChild(halo, wax, flame);
+    normalContainer.addChild(wax);
+    addContainer.addChild(halo, flame);
 
     return {
       wax,
       flame,
       halo,
-      baseX: spot.x,
-      baseY: spot.y,
       freqA: 7 + idx,
       freqB: 11 + idx * 2,
       phase: idx * 1.45,
@@ -90,7 +86,7 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
     core.anchor.set(0.5);
     core.blendMode = 'add';
 
-    container.addChild(halo, core);
+    addContainer.addChild(halo, core);
     return {
       halo,
       core,
@@ -113,20 +109,23 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
   cursorGlow.tint = 0xffba66;
   cursorGlow.width = 230;
   cursorGlow.height = 230;
-  container.addChild(cursorGlow);
+  addContainer.addChild(cursorGlow);
 
   return {
-    container,
+    normalContainer,
+    addContainer,
     update(theta, state, cursorUV) {
       const lanternsAlpha = state.lanterns;
+      const showLanterns = lanternsAlpha > 0.02;
+      normalContainer.visible = showLanterns;
+
       const wispHex = rgbTupleToHex(state.wispRgb);
       const windSway = state.windStrength * 0.28;
 
       for (const c of candles) {
-        c.wax.visible = lanternsAlpha > 0.02;
-        c.flame.visible = lanternsAlpha > 0.02;
-        c.halo.visible = lanternsAlpha > 0.02;
-        if (!c.wax.visible) continue;
+        c.flame.visible = showLanterns;
+        c.halo.visible = showLanterns;
+        if (!showLanterns) continue;
 
         const flicker =
           0.86 +
@@ -144,9 +143,9 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
       }
 
       for (const w of wisps) {
-        w.halo.visible = lanternsAlpha > 0.02;
-        w.core.visible = lanternsAlpha > 0.02;
-        if (!w.halo.visible) continue;
+        w.halo.visible = showLanterns;
+        w.core.visible = showLanterns;
+        if (!showLanterns) continue;
 
         const x = w.baseX + Math.sin(theta * w.freqX + w.phase) * w.ampX;
         const y = w.baseY + Math.sin(theta * w.freqY + w.phase * 1.3) * w.ampY;

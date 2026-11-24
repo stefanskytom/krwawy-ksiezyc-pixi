@@ -1,11 +1,12 @@
-import { Container, Graphics } from 'pixi.js';
+import { Container, Sprite } from 'pixi.js';
 import type { ResolvedSceneState } from '../state/sceneState';
+import type { SceneTextures } from './textures';
 
 interface BatEntity {
   root: Container;
-  leftWing: Graphics;
-  rightWing: Graphics;
-  body: Graphics;
+  leftWing: Sprite;
+  rightWing: Sprite;
+  body: Sprite;
   cx: number;
   cy: number;
   rx: number;
@@ -18,7 +19,6 @@ interface BatEntity {
   flapPhase: number;
   baseScale: number;
   depthAlpha: number;
-  hasEyes: boolean;
 }
 
 export interface BatFlockController {
@@ -26,58 +26,31 @@ export interface BatFlockController {
   update(theta: number, state: ResolvedSceneState): void;
 }
 
-function buildBatParts(hasEyes: boolean): {
+function buildBatParts(textures: SceneTextures, hasEyes: boolean): {
   root: Container;
-  leftWing: Graphics;
-  rightWing: Graphics;
-  body: Graphics;
+  leftWing: Sprite;
+  rightWing: Sprite;
+  body: Sprite;
 } {
   const root = new Container();
 
-  const leftWing = new Graphics();
-  leftWing
-    .moveTo(0, 0)
-    .bezierCurveTo(-9, -11, -18, -10, -24, -2)
-    .quadraticCurveTo(-18, 2, -15, 7)
-    .quadraticCurveTo(-10, 2, -7, 6)
-    .quadraticCurveTo(-3, 2, 0, 4)
-    .closePath()
-    .fill({ color: 0x0a070b });
+  const leftWing = new Sprite(textures.batWing);
+  leftWing.anchor.set(56 / 64, 24 / 48);
+  leftWing.scale.set(0.5);
 
-  const rightWing = new Graphics();
-  rightWing
-    .moveTo(0, 0)
-    .bezierCurveTo(9, -11, 18, -10, 24, -2)
-    .quadraticCurveTo(18, 2, 15, 7)
-    .quadraticCurveTo(10, 2, 7, 6)
-    .quadraticCurveTo(3, 2, 0, 4)
-    .closePath()
-    .fill({ color: 0x0a070b });
+  const rightWing = new Sprite(textures.batWing);
+  rightWing.anchor.set(56 / 64, 24 / 48);
+  rightWing.scale.set(-0.5, 0.5);
 
-  const body = new Graphics();
-  // Pointed bat ears & silhouette torso
-  body
-    .moveTo(-2.5, -4)
-    .lineTo(-4, -9.5)
-    .lineTo(-1, -6)
-    .lineTo(1, -6)
-    .lineTo(4, -9.5)
-    .lineTo(2.5, -4)
-    .quadraticCurveTo(3.8, 2, 0, 7)
-    .quadraticCurveTo(-3.8, 2, -2.5, -4)
-    .closePath()
-    .fill({ color: 0x080509 });
-
-  if (hasEyes) {
-    body.circle(-1.2, -3.5, 0.75).fill({ color: 0xff3d2a, alpha: 0.9 });
-    body.circle(1.2, -3.5, 0.75).fill({ color: 0xff3d2a, alpha: 0.9 });
-  }
+  const body = new Sprite(hasEyes ? textures.batBodyEyes : textures.batBody);
+  body.anchor.set(12 / 24, 22 / 40);
+  body.scale.set(0.5);
 
   root.addChild(leftWing, rightWing, body);
   return { root, leftWing, rightWing, body };
 }
 
-export function createBatFlock(): BatFlockController {
+export function createBatFlock(textures: SceneTextures): BatFlockController {
   const container = new Container();
 
   // 8 gothic bats on closed periodic orbits (integer frequencies -> exact 24s loop)
@@ -93,7 +66,7 @@ export function createBatFlock(): BatFlockController {
   ];
 
   const bats: BatEntity[] = specs.map((s, idx) => {
-    const parts = buildBatParts(s.eyes);
+    const parts = buildBatParts(textures, s.eyes);
     container.addChild(parts.root);
     return {
       ...parts,
@@ -109,7 +82,6 @@ export function createBatFlock(): BatFlockController {
       flapPhase: idx * 0.85,
       baseScale: s.scale,
       depthAlpha: s.alpha,
-      hasEyes: s.eyes,
     };
   });
 
@@ -127,26 +99,23 @@ export function createBatFlock(): BatFlockController {
         const x = b.cx + Math.cos(ax) * b.rx;
         const y = b.cy + Math.sin(ay) * b.ry;
 
-        // Instantaneous velocity tangent for realistic banking & silhouette scaling
         const vx = -Math.sin(ax) * b.rx * b.orbitFreqX;
         const vy = Math.cos(ay) * b.ry * b.orbitFreqY;
 
         b.root.position.set(x, y);
         b.root.rotation = Math.max(-0.42, Math.min(0.42, vy / 260)) + (vx < 0 ? -0.06 : 0.06);
 
-        // Perspective pulse along depth (slight foreshortening on return leg)
         const depthPulse = 0.84 + 0.16 * Math.sin(ax);
         const dirScale = vx >= 0 ? 1 : -1;
         b.root.scale.set(b.baseScale * depthPulse * dirScale, b.baseScale * depthPulse);
         b.root.alpha = b.depthAlpha * (0.85 + 0.15 * depthPulse);
 
-        // Crisp articulated wingbeat (integer flapFreq -> exact loop closure)
         const wingBeat = Math.sin(theta * b.flapFreq + b.flapPhase);
         const wingFold = 0.72 + 0.28 * Math.cos(theta * b.flapFreq + b.flapPhase);
         b.leftWing.rotation = wingBeat * 0.56;
         b.rightWing.rotation = -wingBeat * 0.56;
-        b.leftWing.scale.set(wingFold, 0.85 + 0.15 * wingBeat);
-        b.rightWing.scale.set(wingFold, 0.85 + 0.15 * wingBeat);
+        b.leftWing.scale.set(0.5 * wingFold, 0.5 * (0.85 + 0.15 * wingBeat));
+        b.rightWing.scale.set(-0.5 * wingFold, 0.5 * (0.85 + 0.15 * wingBeat));
       }
     },
   };

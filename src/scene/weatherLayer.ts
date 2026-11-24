@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite } from 'pixi.js';
+import { Container, Sprite } from 'pixi.js';
 import { LOOP_DURATION, TWO_PI, WORLD_H, WORLD_W } from './constants';
 import { rgbTupleToHex, type ResolvedSceneState } from '../state/sceneState';
 import type { SceneTextures } from './textures';
@@ -20,14 +20,11 @@ interface RainDrop {
   x: number;
   y: number;
   speed: number;
-  length: number;
   alpha: number;
 }
 
 interface RainSplash {
-  gfx: Graphics;
-  x: number;
-  y: number;
+  sprite: Sprite;
   phase: number;
   freq: number;
   scale: number;
@@ -41,7 +38,6 @@ interface SnowFlake {
   swayAmp: number;
   swayFreq: number;
   phase: number;
-  size: number;
   baseAlpha: number;
 }
 
@@ -53,8 +49,6 @@ interface EmberParticle {
   swayAmp: number;
   swayFreq: number;
   phase: number;
-  size: number;
-  isAsh: boolean;
 }
 
 interface LightningStrikeState {
@@ -62,11 +56,11 @@ interface LightningStrikeState {
   originX: number;
   targetX: number;
   targetY: number;
-  seed: number;
 }
 
 export interface WeatherLayerController {
-  container: Container;
+  normalContainer: Container;
+  addContainer: Container;
   lightningFlash: number;
   lightningUV: [number, number];
   update(dt: number, loopTime: number, theta: number, state: ResolvedSceneState): void;
@@ -85,64 +79,17 @@ function createPrng(seed: number): () => number {
  * guaranteeing <= 0.13 flashes/s (well below WCAG 2.3.1 3 flashes/s threshold).
  */
 const STRIKE_SCHEDULE: readonly LightningStrikeState[] = [
-  { u: 0.14, originX: 295, targetX: 240, targetY: 365, seed: 101 },
-  { u: 0.49, originX: 735, targetX: 785, targetY: 382, seed: 202 },
-  { u: 0.81, originX: 430, targetX: 390, targetY: 345, seed: 303 },
+  { u: 0.14, originX: 295, targetX: 240, targetY: 365 },
+  { u: 0.49, originX: 735, targetX: 785, targetY: 382 },
+  { u: 0.81, originX: 430, targetX: 390, targetY: 345 },
 ];
 
-function drawForkedBolt(gfx: Graphics, strike: LightningStrikeState, alpha: number): void {
-  gfx.clear();
-  if (alpha <= 0.015) return;
-
-  const rand = createPrng(strike.seed);
-  const segments = 12;
-  const pts: Array<{ x: number; y: number }> = [{ x: strike.originX, y: -6 }];
-  for (let i = 1; i <= segments; i++) {
-    const t = i / segments;
-    const baseX = strike.originX + (strike.targetX - strike.originX) * t;
-    const baseY = -6 + (strike.targetY + 6) * t;
-    const jitter = (1 - Math.abs(t - 0.5) * 1.4) * 34;
-    pts.push({
-      x: baseX + (rand() - 0.5) * jitter,
-      y: baseY + (rand() - 0.5) * 8,
-    });
-  }
-
-  // Outer glow stroke
-  gfx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) {
-    gfx.lineTo(pts[i].x, pts[i].y);
-  }
-  gfx.stroke({ width: 7, color: 0x8fc4ff, alpha: alpha * 0.34, cap: 'round', join: 'round' });
-
-  // Inner bright core
-  gfx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) {
-    gfx.lineTo(pts[i].x, pts[i].y);
-  }
-  gfx.stroke({ width: 2.2, color: 0xf4f9ff, alpha: alpha * 0.96, cap: 'round', join: 'round' });
-
-  // 3 jagged sub-branches
-  for (const branchIdx of [3, 6, 8]) {
-    const start = pts[branchIdx];
-    const dir = rand() > 0.5 ? 1 : -1;
-    let bx = start.x;
-    let by = start.y;
-    gfx.moveTo(bx, by);
-    for (let s = 0; s < 4; s++) {
-      bx += dir * (12 + rand() * 18);
-      by += 16 + rand() * 18;
-      gfx.lineTo(bx, by);
-    }
-    gfx.stroke({ width: 1.4, color: 0xd4ecff, alpha: alpha * 0.72, cap: 'round', join: 'round' });
-  }
-}
-
 export function createWeatherLayer(textures: SceneTextures): WeatherLayerController {
-  const container = new Container();
+  const normalContainer = new Container();
+  const addContainer = new Container();
   const rand = createPrng(9001);
 
-  // 1. Calm atmospheric dust motes (purely periodic -> exact 24s loop)
+  // 1. Calm atmospheric dust motes (additive)
   const motesContainer = new Container();
   const motes: MoteParticle[] = [];
   for (let i = 0; i < 45; i++) {
@@ -166,7 +113,7 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
     });
   }
 
-  // 2. Rain streaks + splash rings
+  // 2. Rain streaks + sprite splash rings (normal)
   const rainContainer = new Container();
   const raindrops: RainDrop[] = [];
   for (let i = 0; i < 240; i++) {
@@ -174,34 +121,33 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
     sprite.anchor.set(0.5);
     const depth = 0.45 + rand() * 0.55;
     sprite.width = 1.6 + depth * 1.4;
-    const len = 28 + depth * 32;
-    sprite.height = len;
+    sprite.height = 28 + depth * 32;
     rainContainer.addChild(sprite);
     raindrops.push({
       sprite,
-      x: rand() * (WORLD_W + 260) - 130,
-      y: rand() * (WORLD_H + 120) - 60,
+      x: rand() * WORLD_W,
+      y: 20 + rand() * (WORLD_H - 40),
       speed: 580 + depth * 420,
-      length: len,
       alpha: 0.18 + depth * 0.36,
     });
   }
 
   const splashes: RainSplash[] = [];
   for (let i = 0; i < 26; i++) {
-    const gfx = new Graphics();
-    rainContainer.addChild(gfx);
+    const sprite = new Sprite(textures.splashRing);
+    sprite.anchor.set(0.5);
+    sprite.tint = 0xcbe9ff;
+    sprite.position.set(40 + rand() * (WORLD_W - 80), 488 + rand() * 78);
+    rainContainer.addChild(sprite);
     splashes.push({
-      gfx,
-      x: 40 + rand() * (WORLD_W - 80),
-      y: 488 + rand() * 78,
+      sprite,
       phase: rand() * TWO_PI,
       freq: 14 + Math.floor(rand() * 10),
       scale: 0.65 + rand() * 0.65,
     });
   }
 
-  // 3. Snowflakes
+  // 3. Snowflakes (normal)
   const snowContainer = new Container();
   const snowflakes: SnowFlake[] = [];
   for (let i = 0; i < 160; i++) {
@@ -220,14 +166,15 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       swayAmp: 12 + rand() * 22,
       swayFreq: 2 + Math.floor(rand() * 3),
       phase: rand() * TWO_PI,
-      size,
       baseAlpha: 0.35 + depth * 0.55,
     });
   }
 
-  // 4. Embers & Ash
+  // 4. Embers (additive) & Ash (normal) separated so blend modes never interleave
   const embersContainer = new Container();
+  const ashContainer = new Container();
   const embers: EmberParticle[] = [];
+  const ash: EmberParticle[] = [];
   for (let i = 0; i < 155; i++) {
     const isAsh = i >= 105;
     const sprite = new Sprite(textures.particleSoft);
@@ -236,8 +183,8 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
     const size = isAsh ? 2.4 + rand() * 3.8 : 2.8 + rand() * 5.2;
     sprite.width = size;
     sprite.height = size;
-    embersContainer.addChild(sprite);
-    embers.push({
+
+    const particle: EmberParticle = {
       sprite,
       x: rand() * WORLD_W,
       y: rand() * WORLD_H,
@@ -245,20 +192,31 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       swayAmp: 16 + rand() * 34,
       swayFreq: 2 + Math.floor(rand() * 3),
       phase: rand() * TWO_PI,
-      size,
-      isAsh,
-    });
+    };
+
+    if (isAsh) {
+      sprite.tint = 0x625a64;
+      sprite.alpha = 0.45;
+      ashContainer.addChild(sprite);
+      ash.push(particle);
+    } else {
+      embersContainer.addChild(sprite);
+      embers.push(particle);
+    }
   }
 
-  // 5. Forked Lightning Graphic
-  const lightningGfx = new Graphics();
-  lightningGfx.blendMode = 'add';
+  // 5. Forked Lightning Bolt Sprite (additive, transformed per strike)
+  const lightningBolt = new Sprite(textures.lightningBolt);
+  lightningBolt.anchor.set(0.5, 0.0);
+  lightningBolt.blendMode = 'add';
+  lightningBolt.visible = false;
 
-  container.addChild(motesContainer, rainContainer, snowContainer, embersContainer, lightningGfx);
+  normalContainer.addChild(rainContainer, snowContainer, ashContainer);
+  addContainer.addChild(motesContainer, embersContainer, lightningBolt);
 
-  let activeStrikeIndex = -1;
   const controller: WeatherLayerController = {
-    container,
+    normalContainer,
+    addContainer,
     lightningFlash: 0,
     lightningUV: [0.5, 0.2],
     update(dt, loopTime, theta, state) {
@@ -292,13 +250,13 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
           const dy = drop.speed * (0.85 + state.rainDensity * 0.35) * dt;
           drop.y += dy;
           drop.x -= dy * horizVel;
-          if (drop.y > WORLD_H + 40) {
-            drop.y -= WORLD_H + 80;
+          if (drop.y > WORLD_H - 18) {
+            drop.y -= WORLD_H - 36;
           }
-          if (drop.x < -140) {
-            drop.x += WORLD_W + 280;
-          } else if (drop.x > WORLD_W + 140) {
-            drop.x -= WORLD_W + 280;
+          if (drop.x < 4) {
+            drop.x += WORLD_W - 8;
+          } else if (drop.x > WORLD_W - 4) {
+            drop.x -= WORLD_W - 8;
           }
           drop.sprite.position.set(drop.x, drop.y);
           drop.sprite.rotation = slantAngle;
@@ -308,13 +266,14 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
 
         for (const sp of splashes) {
           const prog = ((theta * sp.freq + sp.phase) % TWO_PI) / TWO_PI;
-          sp.gfx.clear();
           if (prog < 0.75) {
             const k = prog / 0.75;
             const r = (2 + k * 9) * sp.scale;
-            sp.gfx
-              .ellipse(sp.x, sp.y, r, r * 0.34)
-              .stroke({ width: 1.1, color: 0xcbe9ff, alpha: (1 - k) * 0.38 * state.rainDensity });
+            sp.sprite.visible = true;
+            sp.sprite.scale.set(r / 24);
+            sp.sprite.alpha = (1 - k) * 0.42 * state.rainDensity;
+          } else {
+            sp.sprite.visible = false;
           }
         }
       }
@@ -327,38 +286,51 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
         for (const fl of snowflakes) {
           fl.y += fl.fallSpeed * dt;
           fl.x += driftX;
-          if (fl.y > WORLD_H + 16) {
-            fl.y -= WORLD_H + 32;
+          if (fl.y > WORLD_H - 8) {
+            fl.y -= WORLD_H - 16;
           }
-          if (fl.x > WORLD_W + 20) {
-            fl.x -= WORLD_W + 40;
+          if (fl.x > WORLD_W - 8) {
+            fl.x -= WORLD_W - 16;
           }
           const sway = Math.sin(theta * fl.swayFreq + fl.phase) * fl.swayAmp;
-          fl.sprite.position.set(fl.x + sway, fl.y);
+          const sx = Math.max(4, Math.min(WORLD_W - 4, fl.x + sway));
+          fl.sprite.position.set(sx, fl.y);
           fl.sprite.tint = particleHex;
           fl.sprite.alpha = fl.baseAlpha;
         }
       }
 
       // 4. Embers & Ash
-      embersContainer.visible = state.embersDensity > 0.015;
-      if (embersContainer.visible) {
+      const showEmbers = state.embersDensity > 0.015;
+      embersContainer.visible = showEmbers;
+      ashContainer.visible = showEmbers;
+      if (showEmbers) {
         embersContainer.alpha = state.embersDensity;
+        ashContainer.alpha = state.embersDensity;
         const emberHoriz = (10 + windX * 85) * dt;
+        const emberTint = state.colorShift > 0.5 ? moonHex : 0xff6e2b;
+
         for (const em of embers) {
           em.y -= em.riseSpeed * dt;
           em.x += emberHoriz;
-          if (em.y < -20) {
-            em.y += WORLD_H + 40;
-          }
-          if (em.x > WORLD_W + 20) {
-            em.x -= WORLD_W + 40;
-          }
+          if (em.y < 8) em.y += WORLD_H - 16;
+          if (em.x > WORLD_W - 8) em.x -= WORLD_W - 16;
           const sway = Math.sin(theta * em.swayFreq + em.phase) * em.swayAmp;
           const flicker = 0.58 + 0.42 * Math.sin(theta * 9 + em.phase * 2);
-          em.sprite.position.set(em.x + sway, em.y);
-          em.sprite.tint = em.isAsh ? 0x625a64 : (state.colorShift > 0.5 ? moonHex : 0xff6e2b);
-          em.sprite.alpha = em.isAsh ? 0.45 : 0.88 * flicker;
+          const ex = Math.max(4, Math.min(WORLD_W - 4, em.x + sway));
+          em.sprite.position.set(ex, em.y);
+          em.sprite.tint = emberTint;
+          em.sprite.alpha = 0.88 * flicker;
+        }
+
+        for (const em of ash) {
+          em.y -= em.riseSpeed * dt;
+          em.x += emberHoriz;
+          if (em.y < 8) em.y += WORLD_H - 16;
+          if (em.x > WORLD_W - 8) em.x -= WORLD_W - 16;
+          const sway = Math.sin(theta * em.swayFreq + em.phase) * em.swayAmp;
+          const ex = Math.max(4, Math.min(WORLD_W - 4, em.x + sway));
+          em.sprite.position.set(ex, em.y);
         }
       }
 
@@ -384,19 +356,20 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       }
 
       controller.lightningFlash = flashVal;
-      if (strikeFound >= 0) {
+      if (strikeFound >= 0 && flashVal > 0.015) {
         const s = STRIKE_SCHEDULE[strikeFound];
         controller.lightningUV[0] = s.originX / WORLD_W;
         controller.lightningUV[1] = 0.16;
-        if (activeStrikeIndex !== strikeFound || flashVal > 0.02) {
-          drawForkedBolt(lightningGfx, s, flashVal);
-          activeStrikeIndex = strikeFound;
-        }
+
+        const dx = s.targetX - s.originX;
+        const dy = s.targetY + 6;
+        lightningBolt.visible = true;
+        lightningBolt.position.set(s.originX, -6);
+        lightningBolt.scale.set(strikeFound === 1 ? -1.05 : 1.05, Math.hypot(dx, dy) / 240);
+        lightningBolt.rotation = Math.atan2(-dx, dy);
+        lightningBolt.alpha = flashVal;
       } else {
-        if (activeStrikeIndex !== -1) {
-          lightningGfx.clear();
-          activeStrikeIndex = -1;
-        }
+        lightningBolt.visible = false;
       }
     },
   };
