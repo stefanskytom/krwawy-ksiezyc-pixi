@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Krwawy Księżyc — Animacja PixiJS</title>
+  </head>
+  <body>
+    <main id="stage" class="stage"></main>
+
+    <aside class="hud-dock" aria-label="Sterowanie sceną">
+      <div class="hud-header">
+        <div class="hud-title-wrap">
+          <h1>Krwawy Księżyc</h1>
+          <div class="loop-meter" aria-hidden="true">
+            <div id="loop-progress-bar" class="loop-meter-fill"></div>
+          </div>
+          <span class="loop-caption">Pętla 24 s</span>
+        </div>
+
+        <button
+          id="toggle-panel-btn"
+          class="icon-btn"
+          type="button"
+          aria-expanded="true"
+          aria-controls="panel-body"
+        >
+          Ukryj panel
+        </button>
+      </div>
+
+      <div id="panel-body" class="hud-body">
+        <div class="action-bar">
+          <button id="play-pause-btn" class="action-btn" type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M6 5h4v14H6zm8 0h4v14h-4z" />
+            </svg>
+            <span id="play-pause-label">Wstrzymaj</span>
+          </button>
+
+          <button id="fullscreen-btn" class="action-btn" type="button">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M4 9V4h5v2H6v3H4zm14-3h-3V4h5v5h-2V6zM6 15v3h3v2H4v-5h2zm12 3v-3h2v5h-5v-2h3z" />
+            </svg>
+            <span id="fullscreen-label">Pełny ekran</span>
+          </button>
+        </div>
+
+        <fieldset class="control-group">
+          <legend>Światło</legend>
+
+          <div class="chip-grid">
+            <input class="chip-input" type="radio" name="lighting" id="light-blood" value="blood" checked />
+            <label class="chip-label" for="light-blood">Krwawy księżyc</label>
+
+            <input class="chip-input" type="radio" name="lighting" id="light-silver" value="silver" />
+            <label class="chip-label" for="light-silver">Srebrna pełnia</label>
+
+            <input class="chip-input" type="radio" name="lighting" id="light-emerald" value="emerald" />
+            <label class="chip-label" for="light-emerald">Szmaragd</label>
+
+            <input class="chip-input" type="radio" name="lighting" id="light-eclipse" value="eclipse" />
+            <label class="chip-label" for="light-eclipse">Zaćmienie</label>
+          </div>
+
+          <div class="switch-list">
+            <div class="switch-row">
+              <label for="sw-moon-glow">Poświata księżyca</label>
+              <input id="sw-moon-glow" type="checkbox" switch checked />
+            </div>
+
+            <div class="switch-row">
+              <label for="sw-lanterns">Znicze i ogniki</label>
+              <input id="sw-lanterns" type="checkbox" switch checked />
+            </div>
+
+            <div class="switch-row">
+              <label for="sw-cursor-light">Latarka kursora</label>
+              <input id="sw-cursor-light" type="checkbox" switch />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="control-group">
+          <legend>Pogoda</legend>
+
+          <div class="chip-grid chip-grid-weather">
+            <input class="chip-input" type="radio" name="weather" id="wx-calm" value="calm" checked />
+            <label class="chip-label" for="wx-calm">Spokojna noc</label>
+
+            <input class="chip-input" type="radio" name="weather" id="wx-fog" value="fog" />
+            <label class="chip-label" for="wx-fog">Gęsta mgła</label>
+
+            <input class="chip-input" type="radio" name="weather" id="wx-rain" value="rain" />
+            <label class="chip-label" for="wx-rain">Deszcz</label>
+
+            <input class="chip-input" type="radio" name="weather" id="wx-storm" value="storm" />
+            <label class="chip-label" for="wx-storm">Burza</label>
+
+            <input class="chip-input" type="radio" name="weather" id="wx-snow" value="snow" />
+            <label class="chip-label" for="wx-snow">Śnieg</label>
+
+            <input class="chip-input" type="radio" name="weather" id="wx-embers" value="embers" />
+            <label class="chip-label" for="wx-embers">Żar i popiół</label>
+          </div>
+
+          <div class="switch-list">
+            <div class="switch-row">
+              <label for="sw-strong-wind">Porywisty wiatr</label>
+              <input id="sw-strong-wind" type="checkbox" switch />
+            </div>
+
+            <div class="switch-row">
+              <label for="sw-lightning">Błyskawice</label>
+              <input id="sw-lightning" type="checkbox" switch />
+            </div>
+
+            <div class="switch-row">
+              <label for="sw-bats">Nietoperze</label>
+              <input id="sw-bats" type="checkbox" switch checked />
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </aside>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

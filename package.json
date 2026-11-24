@@ -1,0 +1,19 @@
+{
+  "name": "krwawy-ksiezyc-pixi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "input-switch-polyfill": "^1.0.2",
+    "pixi.js": "^8.10.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  }
+}
