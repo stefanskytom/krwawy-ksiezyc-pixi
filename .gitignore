@@ -1,4 +1,6 @@
 node_modules/
 dist/
+assets-src/
+scripts/prepare-artwork.py
 .DS_Store
 *.local
