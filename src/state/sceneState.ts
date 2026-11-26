@@ -1,9 +1,11 @@
 export type LightingMode = 'blood' | 'silver' | 'emerald' | 'eclipse';
 export type WeatherMode = 'calm' | 'fog' | 'rain' | 'storm' | 'snow' | 'embers';
+export type FitMode = 'cover' | 'contain';
 
 export interface SceneSettings {
   lighting: LightingMode;
   weather: WeatherMode;
+  fitMode: FitMode;
   moonGlow: boolean;
   lanterns: boolean;
   cursorLight: boolean;
@@ -234,6 +236,7 @@ export function createInitialSettings(reducedMotion: boolean): SceneSettings {
   return {
     lighting: 'blood',
     weather: 'calm',
+    fitMode: 'cover',
     moonGlow: true,
     lanterns: true,
     cursorLight: false,
@@ -323,4 +326,50 @@ export function stepResolvedState(
   current.embersDensity = lerp(current.embersDensity, wx.embersDensity, alpha);
   current.calmMotes = lerp(current.calmMotes, wx.calmMotes, alpha);
   current.stormDarken = lerp(current.stormDarken, wx.stormDarken, alpha);
+}
+
+function rgbSettled(a: RgbTuple, b: RgbTuple, eps: number): boolean {
+  return (
+    Math.abs(a[0] - b[0]) <= eps &&
+    Math.abs(a[1] - b[1]) <= eps &&
+    Math.abs(a[2] - b[2]) <= eps
+  );
+}
+
+export function isResolvedStateSettled(
+  current: ResolvedSceneState,
+  settings: SceneSettings,
+  eps = 0.001
+): boolean {
+  const pal = LIGHTING_PALETTES[settings.lighting];
+  const wx = WEATHER_PRESETS[settings.weather];
+  const windTarget = settings.strongWind
+    ? Math.max(wx.windStrength, 0.96)
+    : wx.windStrength * 0.85;
+
+  return (
+    rgbSettled(current.moonTint, pal.moonTint, eps) &&
+    rgbSettled(current.mistTint, pal.mistTint, eps) &&
+    rgbSettled(current.shadowTint, pal.shadowTint, eps) &&
+    rgbSettled(current.artworkTint, pal.artworkTint, eps) &&
+    rgbSettled(current.wispRgb, pal.wispRgb, eps) &&
+    rgbSettled(current.particleRgb, pal.particleRgb, eps) &&
+    rgbSettled(current.moonHaloRgb, pal.moonHaloRgb, eps) &&
+    Math.abs(current.colorShift - pal.colorShift) <= eps &&
+    Math.abs(current.exposure - pal.exposure) <= eps &&
+    Math.abs(current.eclipseAmount - pal.eclipseAmount) <= eps &&
+    Math.abs(current.moonGlow - (settings.moonGlow ? 1 : 0)) <= eps &&
+    Math.abs(current.lanterns - (settings.lanterns ? 1 : 0)) <= eps &&
+    Math.abs(current.cursorLight - (settings.cursorLight ? 1 : 0)) <= eps &&
+    Math.abs(current.bats - (settings.bats ? 1 : 0)) <= eps &&
+    Math.abs(current.lightning - (settings.lightning ? 1 : 0)) <= eps &&
+    Math.abs(current.windStrength - windTarget) <= eps &&
+    Math.abs(current.fogDensity - wx.fogDensity) <= eps &&
+    Math.abs(current.cloudOpacity - wx.cloudOpacity) <= eps &&
+    Math.abs(current.rainDensity - wx.rainDensity) <= eps &&
+    Math.abs(current.snowDensity - wx.snowDensity) <= eps &&
+    Math.abs(current.embersDensity - wx.embersDensity) <= eps &&
+    Math.abs(current.calmMotes - wx.calmMotes) <= eps &&
+    Math.abs(current.stormDarken - wx.stormDarken) <= eps
+  );
 }

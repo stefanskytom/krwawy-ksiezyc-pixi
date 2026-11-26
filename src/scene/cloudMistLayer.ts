@@ -171,6 +171,8 @@ export function createCloudMistLayer(textures: SceneTextures): CloudMistLayerCon
     fogScale: 0.58,
   });
 
+  let initialized = false;
+
   return {
     normalContainer,
     addContainer,
@@ -178,39 +180,9 @@ export function createCloudMistLayer(textures: SceneTextures): CloudMistLayerCon
       const moonHex = rgbTupleToHex(state.moonTint);
       const mistHex = rgbTupleToHex(state.mistTint);
       const windSpeedMul = 0.65 + state.windStrength * 1.35;
+      const dtMoved = !initialized || Math.abs(dt) > 1e-6;
 
       for (const b of bands) {
-        const baseVel = (b.baseCyclesPerLoop * b.bandWidth) / LOOP_DURATION;
-        b.offsetX = (b.offsetX + baseVel * windSpeedMul * dt) % b.bandWidth;
-        if (b.offsetX < 0) b.offsetX += b.bandWidth;
-
-        const y = b.baseY + Math.sin(theta * b.verticalFreq + b.baseY * 0.03) * b.verticalAmp;
-        const uFrac = b.offsetX / b.bandWidth;
-        const leftW = b.offsetX;
-        const rightW = b.bandWidth - b.offsetX;
-
-        if (leftW > 0.5) {
-          b.spriteA.visible = true;
-          b.texA.frame.x = b.atlasX + b.atlasW * (1 - uFrac);
-          b.texA.frame.width = Math.max(0.5, b.atlasW * uFrac);
-          b.texA.update();
-          b.spriteA.position.set(0, y);
-          b.spriteA.width = leftW;
-        } else {
-          b.spriteA.visible = false;
-        }
-
-        if (rightW > 0.5) {
-          b.spriteB.visible = true;
-          b.texB.frame.x = b.atlasX;
-          b.texB.frame.width = Math.max(0.5, b.atlasW * (1 - uFrac));
-          b.texB.update();
-          b.spriteB.position.set(leftW, y);
-          b.spriteB.width = rightW;
-        } else {
-          b.spriteB.visible = false;
-        }
-
         let tint: number;
         let alpha: number;
         if (b.kind === 'cloud') {
@@ -223,11 +195,56 @@ export function createCloudMistLayer(textures: SceneTextures): CloudMistLayerCon
           alpha = Math.min(0.92, (b.baseAlpha * 0.55 + state.fogDensity * b.fogScale) * breath);
         }
 
+        if (alpha <= 0.005) {
+          b.spriteA.visible = false;
+          b.spriteB.visible = false;
+          continue;
+        }
+
+        const wasHidden = !b.spriteA.visible && !b.spriteB.visible;
+        const baseVel = (b.baseCyclesPerLoop * b.bandWidth) / LOOP_DURATION;
+        b.offsetX = (b.offsetX + baseVel * windSpeedMul * dt) % b.bandWidth;
+        if (b.offsetX < 0) b.offsetX += b.bandWidth;
+
+        const y = b.baseY + Math.sin(theta * b.verticalFreq + b.baseY * 0.03) * b.verticalAmp;
+        const uFrac = b.offsetX / b.bandWidth;
+        const leftW = b.offsetX;
+        const rightW = b.bandWidth - b.offsetX;
+        const updateFrames = dtMoved || wasHidden;
+
+        if (leftW > 0.5) {
+          b.spriteA.visible = true;
+          if (updateFrames) {
+            b.texA.frame.x = b.atlasX + b.atlasW * (1 - uFrac);
+            b.texA.frame.width = Math.max(0.5, b.atlasW * uFrac);
+            b.texA.update();
+          }
+          b.spriteA.position.set(0, y);
+          b.spriteA.width = leftW;
+        } else {
+          b.spriteA.visible = false;
+        }
+
+        if (rightW > 0.5) {
+          b.spriteB.visible = true;
+          if (updateFrames) {
+            b.texB.frame.x = b.atlasX;
+            b.texB.frame.width = Math.max(0.5, b.atlasW * (1 - uFrac));
+            b.texB.update();
+          }
+          b.spriteB.position.set(leftW, y);
+          b.spriteB.width = rightW;
+        } else {
+          b.spriteB.visible = false;
+        }
+
         b.spriteA.tint = tint;
         b.spriteB.tint = tint;
         b.spriteA.alpha = alpha;
         b.spriteB.alpha = alpha;
       }
+
+      initialized = true;
     },
     destroy() {
       for (const b of bands) {

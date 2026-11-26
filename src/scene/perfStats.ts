@@ -1,4 +1,4 @@
-import { Application, Container, Sprite, Texture, type TextureSource, type WebGLRenderer } from 'pixi.js';
+import { Container, Sprite, type TextureSource, type WebGLRenderer } from 'pixi.js';
 
 export interface PerfSnapshot {
   fps: number;
@@ -15,6 +15,7 @@ export interface PerfSnapshot {
 }
 
 export interface PerfStatsController {
+  setEnabled(enabled: boolean): void;
   tick(deltaMs: number): void;
   destroy(): void;
 }
@@ -44,20 +45,18 @@ function triCountForMode(mode: number, count: number, gl: WebGLRenderingContext)
 }
 
 export function createPerfStats(
-  app: Application,
+  renderer: WebGLRenderer,
   stageRoot: Container,
+  trackedSources: readonly TextureSource[],
   onUpdate?: (snapshot: PerfSnapshot) => void
 ): PerfStatsController {
-  const renderer = app.renderer;
-  const isWebGL = renderer.name === 'webgl' && 'gl' in renderer;
-  const gl = isWebGL ? (renderer as WebGLRenderer).gl : null;
+  const gl = renderer.gl;
+  const rendererType =
+    typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext
+      ? 'WebGL 2'
+      : 'WebGL';
 
-  const rendererType = isWebGL
-    ? (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext
-        ? 'WebGL 2'
-        : 'WebGL')
-    : renderer.name.toUpperCase();
-
+  let enabled = false;
   let frameDrawCalls = 0;
   let frameTriangles = 0;
   let lastDrawCalls = 0;
@@ -68,8 +67,30 @@ export function createPerfStats(
   let origDrawArrays: WebGLRenderingContext['drawArrays'] | null = null;
   let origDrawElementsInstanced: WebGL2RenderingContext['drawElementsInstanced'] | null = null;
   let origDrawArraysInstanced: WebGL2RenderingContext['drawArraysInstanced'] | null = null;
+  let origRender: ((...args: unknown[]) => void) | null = null;
 
-  if (gl) {
+  let smoothedFrameMs = 16.67;
+  let smoothedRenderMs = 0.5;
+  let accumMs = 200;
+  const counts: CountResult = { sprites: 0, meshes: 0 };
+
+  const snapshot: PerfSnapshot = {
+    fps: 60,
+    frameMs: 16.67,
+    renderMs: 0,
+    drawCalls: 0,
+    triangles: 0,
+    activeSprites: 0,
+    meshCount: 0,
+    textureCount: 0,
+    vramMB: 0,
+    jsHeapMB: null,
+    rendererType,
+  };
+
+  const attachWrappers = (): void => {
+    if (origRender) return;
+
     origDrawElements = gl.drawElements.bind(gl);
     gl.drawElements = (mode: number, count: number, type: number, offset: number): void => {
       frameDrawCalls += 1;
@@ -113,41 +134,61 @@ export function createPerfStats(
         origDrawArraysInstanced!(mode, first, count, instanceCount);
       };
     }
-  }
 
-  const originalRender = renderer.render;
-  const wrappedRender = function (this: unknown, ...args: unknown[]): void {
-    frameDrawCalls = 0;
-    frameTriangles = 0;
-    const t0 = performance.now();
-    (originalRender as (...a: unknown[]) => void).apply(this, args);
-    lastRenderMs = performance.now() - t0;
-    lastDrawCalls = frameDrawCalls;
-    lastTriangles = frameTriangles;
+    origRender = renderer.render as (...args: unknown[]) => void;
+    (renderer as { render: (...args: unknown[]) => void }).render = function (
+      this: unknown,
+      ...args: unknown[]
+    ): void {
+      frameDrawCalls = 0;
+      frameTriangles = 0;
+      const t0 = performance.now();
+      origRender!.apply(this, args);
+      lastRenderMs = performance.now() - t0;
+      lastDrawCalls = frameDrawCalls;
+      lastTriangles = frameTriangles;
+    };
   };
-  (renderer as { render: (...args: unknown[]) => void }).render = wrappedRender;
 
-  let smoothedFrameMs = 16.67;
-  let smoothedRenderMs = 0.5;
-  let accumMs = 200; // emit immediately on first tick
-  const counts: CountResult = { sprites: 0, meshes: 0 };
+  const detachWrappers = (): void => {
+    if (origRender) {
+      (renderer as { render: (...args: unknown[]) => void }).render = origRender;
+      origRender = null;
+    }
 
-  const snapshot: PerfSnapshot = {
-    fps: 60,
-    frameMs: 16.67,
-    renderMs: 0,
-    drawCalls: 0,
-    triangles: 0,
-    activeSprites: 0,
-    meshCount: 0,
-    textureCount: 0,
-    vramMB: 0,
-    jsHeapMB: null,
-    rendererType,
+    if (origDrawElements) {
+      gl.drawElements = origDrawElements;
+      origDrawElements = null;
+    }
+    if (origDrawArrays) {
+      gl.drawArrays = origDrawArrays;
+      origDrawArrays = null;
+    }
+    const gl2 = gl as WebGL2RenderingContext;
+    if (origDrawElementsInstanced) {
+      gl2.drawElementsInstanced = origDrawElementsInstanced;
+      origDrawElementsInstanced = null;
+    }
+    if (origDrawArraysInstanced) {
+      gl2.drawArraysInstanced = origDrawArraysInstanced;
+      origDrawArraysInstanced = null;
+    }
   };
 
   return {
+    setEnabled(nextEnabled) {
+      if (nextEnabled === enabled) return;
+      enabled = nextEnabled;
+      if (enabled) {
+        attachWrappers();
+        accumMs = 200;
+      } else {
+        detachWrappers();
+      }
+    },
     tick(deltaMs: number) {
+      if (!enabled) return;
+
       const clampedMs = Math.max(0.1, Math.min(deltaMs, 250));
       smoothedFrameMs += (clampedMs - smoothedFrameMs) * 0.14;
       smoothedRenderMs += (lastRenderMs - smoothedRenderMs) * 0.2;
@@ -162,15 +203,11 @@ export function createPerfStats(
 
       let texCount = 0;
       let vramBytes = 0;
-      const managed = (renderer.texture as { managedTextures?: readonly TextureSource[] })
-        .managedTextures;
-      if (managed) {
-        for (let i = 0; i < managed.length; i++) {
-          const src = managed[i];
-          if (!src || src === Texture.EMPTY.source) continue;
-          texCount += 1;
-          vramBytes += src.pixelWidth * src.pixelHeight * 4;
-        }
+      for (let i = 0; i < trackedSources.length; i++) {
+        const src = trackedSources[i];
+        if (!src || src.destroyed) continue;
+        texCount += 1;
+        vramBytes += src.pixelWidth * src.pixelHeight * 4;
       }
 
       const mem = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
@@ -190,17 +227,8 @@ export function createPerfStats(
       onUpdate?.(snapshot);
     },
     destroy() {
-      (renderer as { render: (...args: unknown[]) => void }).render = originalRender as (
-        ...args: unknown[]
-      ) => void;
-
-      if (gl) {
-        if (origDrawElements) gl.drawElements = origDrawElements;
-        if (origDrawArrays) gl.drawArrays = origDrawArrays;
-        const gl2 = gl as WebGL2RenderingContext;
-        if (origDrawElementsInstanced) gl2.drawElementsInstanced = origDrawElementsInstanced;
-        if (origDrawArraysInstanced) gl2.drawArraysInstanced = origDrawArraysInstanced;
-      }
+      enabled = false;
+      detachWrappers();
     },
   };
 }

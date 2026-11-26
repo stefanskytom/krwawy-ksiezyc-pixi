@@ -33,6 +33,18 @@ const statMeshes = document.getElementById('stat-meshes');
 const statVram = document.getElementById('stat-vram');
 const statHeap = document.getElementById('stat-heap');
 
+const statsHud = document.getElementById('perf-stats');
+const toggleStatsBtn = document.getElementById('toggle-stats-btn') as HTMLButtonElement | null;
+const statsBody = document.getElementById('stats-body');
+
+const isCompactViewport = window.innerWidth <= 720 || window.innerHeight <= 540;
+if (isCompactViewport && statsBody && statsHud && toggleStatsBtn) {
+  toggleStatsBtn.setAttribute('aria-expanded', 'false');
+  toggleStatsBtn.textContent = 'Pokaż';
+  statsBody.hidden = true;
+  statsHud.classList.add('is-collapsed');
+}
+
 const scene = new GraveyardScene(
   stageEl,
   settings,
@@ -57,13 +69,15 @@ const scene = new GraveyardScene(
     if (statHeap) {
       statHeap.textContent = stats.jsHeapMB !== null ? `${stats.jsHeapMB.toFixed(1)} MB` : 'n/d';
     }
-  }
+  },
+  !isCompactViewport
 );
 
 void scene.init();
 
 motionMedia.addEventListener('change', (ev) => {
   settings.reducedMotion = ev.matches;
+  scene.wake();
 });
 
 function applyUiAccent(mode: LightingMode): void {
@@ -76,6 +90,12 @@ function applyUiAccent(mode: LightingMode): void {
 }
 applyUiAccent(settings.lighting);
 
+// Fit mode toggle (cover vs contain 16:9)
+const swFitCover = document.getElementById('sw-fit-cover') as HTMLInputElement | null;
+swFitCover?.addEventListener('change', () => {
+  scene.setFitMode(swFitCover.checked ? 'cover' : 'contain');
+});
+
 // Lighting mode radios
 const lightingRadios = document.querySelectorAll<HTMLInputElement>('input[name="lighting"]');
 for (const radio of lightingRadios) {
@@ -84,6 +104,7 @@ for (const radio of lightingRadios) {
     const mode = radio.value as LightingMode;
     settings.lighting = mode;
     applyUiAccent(mode);
+    scene.wake();
   });
 }
 
@@ -94,12 +115,15 @@ const swCursorLight = document.getElementById('sw-cursor-light') as HTMLInputEle
 
 swMoonGlow?.addEventListener('change', () => {
   settings.moonGlow = swMoonGlow.checked;
+  scene.wake();
 });
 swLanterns?.addEventListener('change', () => {
   settings.lanterns = swLanterns.checked;
+  scene.wake();
 });
 swCursorLight?.addEventListener('change', () => {
   settings.cursorLight = swCursorLight.checked;
+  scene.wake();
 });
 
 // Weather switches & mode radios
@@ -127,17 +151,21 @@ for (const radio of weatherRadios) {
 
     if (swStrongWind) swStrongWind.checked = settings.strongWind;
     if (swLightning) swLightning.checked = settings.lightning;
+    scene.wake();
   });
 }
 
 swStrongWind?.addEventListener('change', () => {
   settings.strongWind = swStrongWind.checked;
+  scene.wake();
 });
 swLightning?.addEventListener('change', () => {
   settings.lightning = swLightning.checked;
+  scene.wake();
 });
 swBats?.addEventListener('change', () => {
   settings.bats = swBats.checked;
+  scene.wake();
 });
 
 // Play / Pause button (no aria-pressed because label toggles between Wstrzymaj & Wznów)
@@ -157,6 +185,7 @@ playPauseBtn?.addEventListener('click', () => {
         : 'M6 5h4v14H6zm8 0h4v14h-4z'
     );
   }
+  scene.wake();
 });
 
 // Fullscreen toggle
@@ -192,9 +221,6 @@ togglePanelBtn?.addEventListener('click', () => {
 });
 
 // Stats HUD collapse / expand toggle
-const statsHud = document.getElementById('perf-stats');
-const toggleStatsBtn = document.getElementById('toggle-stats-btn') as HTMLButtonElement | null;
-const statsBody = document.getElementById('stats-body');
 toggleStatsBtn?.addEventListener('click', () => {
   if (!statsBody || !statsHud) return;
   const isExpanded = toggleStatsBtn.getAttribute('aria-expanded') === 'true';
@@ -203,6 +229,7 @@ toggleStatsBtn?.addEventListener('click', () => {
   toggleStatsBtn.textContent = nextExpanded ? 'Ukryj' : 'Pokaż';
   statsBody.hidden = !nextExpanded;
   statsHud.classList.toggle('is-collapsed', !nextExpanded);
+  scene.setStatsEnabled(nextExpanded);
 });
 
 window.addEventListener('beforeunload', () => {

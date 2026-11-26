@@ -63,6 +63,7 @@ export interface WeatherLayerController {
   addContainer: Container;
   lightningFlash: number;
   lightningUV: [number, number];
+  setViewportWidth(width: number): void;
   update(dt: number, loopTime: number, theta: number, state: ResolvedSceneState): void;
 }
 
@@ -113,97 +114,143 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
     });
   }
 
-  // 2. Rain streaks + sprite splash rings (normal)
+  // 2. Rain streaks + sprite splash rings (lazy-initialized on first rain/storm)
   const rainContainer = new Container();
-  const raindrops: RainDrop[] = [];
-  for (let i = 0; i < 240; i++) {
-    const sprite = new Sprite(textures.rainStreak);
-    sprite.anchor.set(0.5);
-    const depth = 0.45 + rand() * 0.55;
-    sprite.width = 1.6 + depth * 1.4;
-    sprite.height = 28 + depth * 32;
-    rainContainer.addChild(sprite);
-    raindrops.push({
-      sprite,
-      x: rand() * WORLD_W,
-      y: 20 + rand() * (WORLD_H - 40),
-      speed: 580 + depth * 420,
-      alpha: 0.18 + depth * 0.36,
-    });
-  }
+  rainContainer.visible = false;
+  let raindrops: RainDrop[] | null = null;
+  let splashes: RainSplash[] | null = null;
 
-  const splashes: RainSplash[] = [];
-  for (let i = 0; i < 26; i++) {
-    const sprite = new Sprite(textures.splashRing);
-    sprite.anchor.set(0.5);
-    sprite.tint = 0xcbe9ff;
-    sprite.position.set(40 + rand() * (WORLD_W - 80), 488 + rand() * 78);
-    rainContainer.addChild(sprite);
-    splashes.push({
-      sprite,
-      phase: rand() * TWO_PI,
-      freq: 14 + Math.floor(rand() * 10),
-      scale: 0.65 + rand() * 0.65,
-    });
-  }
-
-  // 3. Snowflakes (normal)
+  // 3. Snowflakes (lazy-initialized on first snow)
   const snowContainer = new Container();
-  const snowflakes: SnowFlake[] = [];
-  for (let i = 0; i < 160; i++) {
-    const sprite = new Sprite(textures.particleSoft);
-    sprite.anchor.set(0.5);
-    const depth = 0.35 + rand() * 0.65;
-    const size = 2.6 + depth * 6.5;
-    sprite.width = size;
-    sprite.height = size;
-    snowContainer.addChild(sprite);
-    snowflakes.push({
-      sprite,
-      x: rand() * WORLD_W,
-      y: rand() * WORLD_H,
-      fallSpeed: 28 + depth * 44,
-      swayAmp: 12 + rand() * 22,
-      swayFreq: 2 + Math.floor(rand() * 3),
-      phase: rand() * TWO_PI,
-      baseAlpha: 0.35 + depth * 0.55,
-    });
-  }
+  snowContainer.visible = false;
+  let snowflakes: SnowFlake[] | null = null;
 
-  // 4. Embers (additive) & Ash (normal) separated so blend modes never interleave
+  // 4. Embers (additive) & Ash (normal) (lazy-initialized on first embers)
   const embersContainer = new Container();
   const ashContainer = new Container();
-  const embers: EmberParticle[] = [];
-  const ash: EmberParticle[] = [];
-  for (let i = 0; i < 155; i++) {
-    const isAsh = i >= 105;
-    const sprite = new Sprite(textures.particleSoft);
-    sprite.anchor.set(0.5);
-    sprite.blendMode = isAsh ? 'normal' : 'add';
-    const size = isAsh ? 2.4 + rand() * 3.8 : 2.8 + rand() * 5.2;
-    sprite.width = size;
-    sprite.height = size;
+  embersContainer.visible = false;
+  ashContainer.visible = false;
+  let embers: EmberParticle[] | null = null;
+  let ash: EmberParticle[] | null = null;
 
-    const particle: EmberParticle = {
-      sprite,
-      x: rand() * WORLD_W,
-      y: rand() * WORLD_H,
-      riseSpeed: isAsh ? 22 + rand() * 28 : 48 + rand() * 72,
-      swayAmp: 16 + rand() * 34,
-      swayFreq: 2 + Math.floor(rand() * 3),
-      phase: rand() * TWO_PI,
-    };
+  let densityScale = 1.0;
+  let lastMotesTint = -1;
+  let lastRainTint = -1;
+  let lastSnowTint = -1;
+  let lastEmberTint = -1;
 
-    if (isAsh) {
-      sprite.tint = 0x625a64;
-      sprite.alpha = 0.45;
-      ashContainer.addChild(sprite);
-      ash.push(particle);
-    } else {
-      embersContainer.addChild(sprite);
-      embers.push(particle);
+  const syncPoolVisibility = (items: ReadonlyArray<{ sprite: Sprite }> | null): void => {
+    if (!items) return;
+    const limit = Math.ceil(items.length * densityScale);
+    for (let i = 0; i < items.length; i++) {
+      items[i].sprite.visible = i < limit;
     }
-  }
+  };
+
+  const ensureRain = (): void => {
+    if (raindrops) return;
+    const rainRand = createPrng(9101);
+    raindrops = [];
+    for (let i = 0; i < 240; i++) {
+      const sprite = new Sprite(textures.rainStreak);
+      sprite.anchor.set(0.5);
+      const depth = 0.45 + rainRand() * 0.55;
+      sprite.width = 1.6 + depth * 1.4;
+      sprite.height = 28 + depth * 32;
+      rainContainer.addChild(sprite);
+      raindrops.push({
+        sprite,
+        x: rainRand() * WORLD_W,
+        y: 20 + rainRand() * (WORLD_H - 40),
+        speed: 580 + depth * 420,
+        alpha: 0.18 + depth * 0.36,
+      });
+    }
+
+    splashes = [];
+    for (let i = 0; i < 26; i++) {
+      const sprite = new Sprite(textures.splashRing);
+      sprite.anchor.set(0.5);
+      sprite.tint = 0xcbe9ff;
+      sprite.position.set(40 + rainRand() * (WORLD_W - 80), 488 + rainRand() * 78);
+      rainContainer.addChild(sprite);
+      splashes.push({
+        sprite,
+        phase: rainRand() * TWO_PI,
+        freq: 14 + Math.floor(rainRand() * 10),
+        scale: 0.65 + rainRand() * 0.65,
+      });
+    }
+    syncPoolVisibility(raindrops);
+    syncPoolVisibility(splashes);
+    lastRainTint = -1;
+  };
+
+  const ensureSnow = (): void => {
+    if (snowflakes) return;
+    const snowRand = createPrng(9201);
+    snowflakes = [];
+    for (let i = 0; i < 160; i++) {
+      const sprite = new Sprite(textures.particleSoft);
+      sprite.anchor.set(0.5);
+      const depth = 0.35 + snowRand() * 0.65;
+      const size = 2.6 + depth * 6.5;
+      sprite.width = size;
+      sprite.height = size;
+      snowContainer.addChild(sprite);
+      snowflakes.push({
+        sprite,
+        x: snowRand() * WORLD_W,
+        y: snowRand() * WORLD_H,
+        fallSpeed: 28 + depth * 44,
+        swayAmp: 12 + snowRand() * 22,
+        swayFreq: 2 + Math.floor(snowRand() * 3),
+        phase: snowRand() * TWO_PI,
+        baseAlpha: 0.35 + depth * 0.55,
+      });
+    }
+    syncPoolVisibility(snowflakes);
+    lastSnowTint = -1;
+  };
+
+  const ensureEmbers = (): void => {
+    if (embers) return;
+    const emberRand = createPrng(9301);
+    embers = [];
+    ash = [];
+    for (let i = 0; i < 155; i++) {
+      const isAsh = i >= 105;
+      const sprite = new Sprite(textures.particleSoft);
+      sprite.anchor.set(0.5);
+      sprite.blendMode = isAsh ? 'normal' : 'add';
+      const size = isAsh ? 2.4 + emberRand() * 3.8 : 2.8 + emberRand() * 5.2;
+      sprite.width = size;
+      sprite.height = size;
+
+      const particle: EmberParticle = {
+        sprite,
+        x: emberRand() * WORLD_W,
+        y: emberRand() * WORLD_H,
+        riseSpeed: isAsh ? 22 + emberRand() * 28 : 48 + emberRand() * 72,
+        swayAmp: 16 + emberRand() * 34,
+        swayFreq: 2 + Math.floor(emberRand() * 3),
+        phase: emberRand() * TWO_PI,
+      };
+
+      if (isAsh) {
+        sprite.tint = 0x625a64;
+        sprite.alpha = 0.45;
+        ashContainer.addChild(sprite);
+        ash.push(particle);
+      } else {
+        embersContainer.addChild(sprite);
+        embers.push(particle);
+      }
+    }
+    syncPoolVisibility(embers);
+    syncPoolVisibility(ash);
+    lastEmberTint = -1;
+  };
 
   // 5. Forked Lightning Bolt Sprite (additive, transformed per strike)
   const lightningBolt = new Sprite(textures.lightningBolt);
@@ -219,6 +266,16 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
     addContainer,
     lightningFlash: 0,
     lightningUV: [0.5, 0.2],
+    setViewportWidth(width) {
+      const nextScale = width < 520 ? 0.55 : width < 768 ? 0.72 : 1.0;
+      if (nextScale === densityScale) return;
+      densityScale = nextScale;
+      syncPoolVisibility(raindrops);
+      syncPoolVisibility(splashes);
+      syncPoolVisibility(snowflakes);
+      syncPoolVisibility(embers);
+      syncPoolVisibility(ash);
+    },
     update(dt, loopTime, theta, state) {
       const particleHex = rgbTupleToHex(state.particleRgb);
       const mistHex = rgbTupleToHex(state.mistTint);
@@ -229,12 +286,14 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       motesContainer.visible = state.calmMotes > 0.015;
       if (motesContainer.visible) {
         motesContainer.alpha = state.calmMotes;
+        const tintChanged = lastMotesTint !== particleHex;
+        if (tintChanged) lastMotesTint = particleHex;
         for (const m of motes) {
           const x = m.baseX + Math.sin(theta * m.freqX + m.phase) * m.ampX * (1 + windX * 0.8);
           const y = m.baseY + Math.cos(theta * m.freqY + m.phase) * m.ampY;
           const twinkle = 0.55 + 0.45 * Math.sin(theta * 3 + m.phase * 2);
           m.sprite.position.set(((x % WORLD_W) + WORLD_W) % WORLD_W, y);
-          m.sprite.tint = particleHex;
+          if (tintChanged) m.sprite.tint = particleHex;
           m.sprite.alpha = m.baseAlpha * twinkle;
         }
       }
@@ -242,11 +301,21 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       // 2. Rain & ground splashes
       rainContainer.visible = state.rainDensity > 0.015;
       if (rainContainer.visible) {
+        ensureRain();
         rainContainer.alpha = state.rainDensity;
         const slantAngle = 0.08 + windX * 0.34;
         const horizVel = Math.tan(slantAngle);
+        const dropLimit = Math.ceil(raindrops!.length * densityScale);
+        const splashLimit = Math.ceil(splashes!.length * densityScale);
+        const tintChanged = lastRainTint !== mistHex;
+        if (tintChanged) lastRainTint = mistHex;
 
-        for (const drop of raindrops) {
+        for (let i = 0; i < raindrops!.length; i++) {
+          const drop = raindrops![i];
+          if (i >= dropLimit) {
+            if (tintChanged) drop.sprite.tint = mistHex;
+            continue;
+          }
           const dy = drop.speed * (0.85 + state.rainDensity * 0.35) * dt;
           drop.y += dy;
           drop.x -= dy * horizVel;
@@ -260,11 +329,12 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
           }
           drop.sprite.position.set(drop.x, drop.y);
           drop.sprite.rotation = slantAngle;
-          drop.sprite.tint = mistHex;
+          if (tintChanged) drop.sprite.tint = mistHex;
           drop.sprite.alpha = drop.alpha;
         }
 
-        for (const sp of splashes) {
+        for (let i = 0; i < splashLimit; i++) {
+          const sp = splashes![i];
           const prog = ((theta * sp.freq + sp.phase) % TWO_PI) / TWO_PI;
           if (prog < 0.75) {
             const k = prog / 0.75;
@@ -281,9 +351,19 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       // 3. Snowflakes
       snowContainer.visible = state.snowDensity > 0.015;
       if (snowContainer.visible) {
+        ensureSnow();
         snowContainer.alpha = state.snowDensity;
         const driftX = (14 + windX * 115) * dt;
-        for (const fl of snowflakes) {
+        const snowLimit = Math.ceil(snowflakes!.length * densityScale);
+        const tintChanged = lastSnowTint !== particleHex;
+        if (tintChanged) lastSnowTint = particleHex;
+
+        for (let i = 0; i < snowflakes!.length; i++) {
+          const fl = snowflakes![i];
+          if (i >= snowLimit) {
+            if (tintChanged) fl.sprite.tint = particleHex;
+            continue;
+          }
           fl.y += fl.fallSpeed * dt;
           fl.x += driftX;
           if (fl.y > WORLD_H - 8) {
@@ -295,7 +375,7 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
           const sway = Math.sin(theta * fl.swayFreq + fl.phase) * fl.swayAmp;
           const sx = Math.max(4, Math.min(WORLD_W - 4, fl.x + sway));
           fl.sprite.position.set(sx, fl.y);
-          fl.sprite.tint = particleHex;
+          if (tintChanged) fl.sprite.tint = particleHex;
           fl.sprite.alpha = fl.baseAlpha;
         }
       }
@@ -305,12 +385,22 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
       embersContainer.visible = showEmbers;
       ashContainer.visible = showEmbers;
       if (showEmbers) {
+        ensureEmbers();
         embersContainer.alpha = state.embersDensity;
         ashContainer.alpha = state.embersDensity;
         const emberHoriz = (10 + windX * 85) * dt;
         const emberTint = state.colorShift > 0.5 ? moonHex : 0xff6e2b;
+        const emberLimit = Math.ceil(embers!.length * densityScale);
+        const ashLimit = Math.ceil(ash!.length * densityScale);
+        const tintChanged = lastEmberTint !== emberTint;
+        if (tintChanged) lastEmberTint = emberTint;
 
-        for (const em of embers) {
+        for (let i = 0; i < embers!.length; i++) {
+          const em = embers![i];
+          if (i >= emberLimit) {
+            if (tintChanged) em.sprite.tint = emberTint;
+            continue;
+          }
           em.y -= em.riseSpeed * dt;
           em.x += emberHoriz;
           if (em.y < 8) em.y += WORLD_H - 16;
@@ -319,11 +409,12 @@ export function createWeatherLayer(textures: SceneTextures): WeatherLayerControl
           const flicker = 0.58 + 0.42 * Math.sin(theta * 9 + em.phase * 2);
           const ex = Math.max(4, Math.min(WORLD_W - 4, em.x + sway));
           em.sprite.position.set(ex, em.y);
-          em.sprite.tint = emberTint;
+          if (tintChanged) em.sprite.tint = emberTint;
           em.sprite.alpha = 0.88 * flicker;
         }
 
-        for (const em of ash) {
+        for (let i = 0; i < ashLimit; i++) {
+          const em = ash![i];
           em.y -= em.riseSpeed * dt;
           em.x += emberHoriz;
           if (em.y < 8) em.y += WORLD_H - 16;

@@ -51,16 +51,23 @@ body {
   );
 }
 
+.stage.webgl-fallback {
+  background-image: url('/assets/graveyard-clean.webp');
+  background-size: cover;
+  background-position: 50% 38%;
+  background-repeat: no-repeat;
+}
+
 .stage canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .stats-hud {
   position: fixed;
-  top: 14px;
-  left: 14px;
+  top: clamp(8px, 1.5vw, 14px);
+  left: clamp(8px, 1.5vw, 14px);
   z-index: 20;
   width: 244px;
   border-radius: 12px;
@@ -189,11 +196,11 @@ body {
 
 .hud-dock {
   position: fixed;
-  top: 14px;
-  right: 14px;
+  top: clamp(8px, 1.5vw, 14px);
+  right: clamp(8px, 1.5vw, 14px);
   z-index: 20;
-  width: min(322px, calc(100vw - 28px));
-  max-height: calc(100dvh - 28px);
+  width: min(322px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
   border-radius: 14px;
@@ -412,6 +419,13 @@ input[type='checkbox'][switch]:focus-visible,
   outline-offset: 3px;
 }
 
+.fit-mode-row {
+  padding: 5px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .icon-btn,
   .action-btn,
@@ -420,6 +434,32 @@ input[type='checkbox'][switch]:focus-visible,
       background-color 160ms ease,
       border-color 160ms ease,
       box-shadow 160ms ease;
+  }
+}
+
+@media (max-width: 960px) {
+  .stats-hud {
+    width: 214px;
+  }
+
+  .hud-dock {
+    width: min(286px, calc(100vw - 24px));
+  }
+}
+
+@media (max-height: 580px) {
+  .hud-dock {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .hud-body {
+    padding: 8px 10px 10px;
+    gap: 8px;
+  }
+
+  .control-group {
+    padding: 7px 8px 8px;
+    gap: 6px;
   }
 }
 

@@ -83,8 +83,8 @@ export function createArtworkLayer(
         Math.sin(theta * 3) * 0.35;
       artworkSprite.skew.x = sway * (0.0022 + state.windStrength * 0.0055);
       artworkSprite.scale.set(
-        1.018 + Math.sin(theta) * 0.003,
-        1.018 + Math.cos(theta * 2) * 0.003
+        1.028 + Math.sin(theta) * 0.003,
+        1.028 + Math.cos(theta * 2) * 0.003
       );
 
       // Tint combines lighting mode color, exposure, and storm darkening

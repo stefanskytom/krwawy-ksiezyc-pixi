@@ -35,6 +35,7 @@ export interface LightsLayerController {
 export function createLightsLayer(textures: SceneTextures): LightsLayerController {
   const normalContainer = new Container();
   const addContainer = new Container();
+  const lanternsAddContainer = new Container();
 
   const candles: CandleUnit[] = GRAVESTONE_SPOTS.map((spot, idx) => {
     const wax = new Sprite(textures.candleWax);
@@ -54,7 +55,7 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
     flame.blendMode = 'add';
 
     normalContainer.addChild(wax);
-    addContainer.addChild(halo, flame);
+    lanternsAddContainer.addChild(halo, flame);
 
     return {
       wax,
@@ -86,7 +87,7 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
     core.anchor.set(0.5);
     core.blendMode = 'add';
 
-    addContainer.addChild(halo, core);
+    lanternsAddContainer.addChild(halo, core);
     return {
       halo,
       core,
@@ -109,7 +110,7 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
   cursorGlow.tint = 0xffba66;
   cursorGlow.width = 230;
   cursorGlow.height = 230;
-  addContainer.addChild(cursorGlow);
+  addContainer.addChild(lanternsAddContainer, cursorGlow);
 
   return {
     normalContainer,
@@ -118,50 +119,45 @@ export function createLightsLayer(textures: SceneTextures): LightsLayerControlle
       const lanternsAlpha = state.lanterns;
       const showLanterns = lanternsAlpha > 0.02;
       normalContainer.visible = showLanterns;
+      lanternsAddContainer.visible = showLanterns;
 
-      const wispHex = rgbTupleToHex(state.wispRgb);
-      const windSway = state.windStrength * 0.28;
+      if (showLanterns) {
+        const wispHex = rgbTupleToHex(state.wispRgb);
+        const windSway = state.windStrength * 0.28;
 
-      for (const c of candles) {
-        c.flame.visible = showLanterns;
-        c.halo.visible = showLanterns;
-        if (!showLanterns) continue;
+        for (const c of candles) {
+          const flicker =
+            0.86 +
+            0.09 * Math.sin(theta * c.freqA + c.phase) +
+            0.05 * Math.cos(theta * c.freqB + c.phase * 1.7);
 
-        const flicker =
-          0.86 +
-          0.09 * Math.sin(theta * c.freqA + c.phase) +
-          0.05 * Math.cos(theta * c.freqB + c.phase * 1.7);
+          c.wax.alpha = lanternsAlpha;
+          c.flame.alpha = lanternsAlpha * flicker;
+          c.flame.scale.set(0.32 * (0.9 + 0.14 * flicker), 0.36 * flicker);
+          c.flame.rotation = (0.06 + windSway) * Math.sin(theta * (c.freqA - 2) + c.phase);
 
-        c.wax.alpha = lanternsAlpha;
-        c.flame.alpha = lanternsAlpha * flicker;
-        c.flame.scale.set(0.32 * (0.9 + 0.14 * flicker), 0.36 * flicker);
-        c.flame.rotation = (0.06 + windSway) * Math.sin(theta * (c.freqA - 2) + c.phase);
+          c.halo.alpha = lanternsAlpha * 0.42 * flicker;
+          c.halo.width = 115 * (0.94 + 0.10 * flicker);
+          c.halo.height = 98 * (0.94 + 0.10 * flicker);
+        }
 
-        c.halo.alpha = lanternsAlpha * 0.42 * flicker;
-        c.halo.width = 115 * (0.94 + 0.10 * flicker);
-        c.halo.height = 98 * (0.94 + 0.10 * flicker);
-      }
+        for (const w of wisps) {
+          const x = w.baseX + Math.sin(theta * w.freqX + w.phase) * w.ampX;
+          const y = w.baseY + Math.sin(theta * w.freqY + w.phase * 1.3) * w.ampY;
+          const pulse = 0.62 + 0.38 * Math.sin(theta * w.pulseFreq + w.phase);
 
-      for (const w of wisps) {
-        w.halo.visible = showLanterns;
-        w.core.visible = showLanterns;
-        if (!showLanterns) continue;
+          w.halo.position.set(x, y);
+          w.halo.tint = wispHex;
+          w.halo.width = 58 * w.baseScale * (0.85 + 0.25 * pulse);
+          w.halo.height = 58 * w.baseScale * (0.85 + 0.25 * pulse);
+          w.halo.alpha = lanternsAlpha * 0.36 * pulse;
 
-        const x = w.baseX + Math.sin(theta * w.freqX + w.phase) * w.ampX;
-        const y = w.baseY + Math.sin(theta * w.freqY + w.phase * 1.3) * w.ampY;
-        const pulse = 0.62 + 0.38 * Math.sin(theta * w.pulseFreq + w.phase);
-
-        w.halo.position.set(x, y);
-        w.halo.tint = wispHex;
-        w.halo.width = 58 * w.baseScale * (0.85 + 0.25 * pulse);
-        w.halo.height = 58 * w.baseScale * (0.85 + 0.25 * pulse);
-        w.halo.alpha = lanternsAlpha * 0.36 * pulse;
-
-        w.core.position.set(x, y);
-        w.core.tint = 0xffffff;
-        w.core.width = 10 * w.baseScale * (0.82 + 0.25 * pulse);
-        w.core.height = 10 * w.baseScale * (0.82 + 0.25 * pulse);
-        w.core.alpha = lanternsAlpha * 0.78 * pulse;
+          w.core.position.set(x, y);
+          w.core.tint = 0xffffff;
+          w.core.width = 10 * w.baseScale * (0.82 + 0.25 * pulse);
+          w.core.height = 10 * w.baseScale * (0.82 + 0.25 * pulse);
+          w.core.alpha = lanternsAlpha * 0.78 * pulse;
+        }
       }
 
       cursorGlow.visible = state.cursorLight > 0.01;

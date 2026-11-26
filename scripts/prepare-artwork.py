@@ -11,8 +11,8 @@ from pathlib import Path
 WIDTH = 1024
 HEIGHT = 576
 ROOT = Path(__file__).resolve().parent.parent
-SRC_PATH = ROOT / "public" / "assets" / "graveyard-original.jpg"
-DST_PATH = ROOT / "public" / "assets" / "graveyard-clean.png"
+SRC_PATH = ROOT / "assets-src" / "graveyard-original.jpg"
+DST_PATH = ROOT / "public" / "assets" / "graveyard-clean.webp"
 
 
 def build_bat_mask(rgb: bytes) -> list[bool]:
@@ -144,7 +144,7 @@ def main() -> None:
     healed_count = sum(1 for m in mask if m)
     healed = harmonic_inpaint(raw, mask, iterations=200)
 
-    subprocess.run(
+    png_bytes = subprocess.check_output(
         [
             "magick",
             "-size",
@@ -152,9 +152,23 @@ def main() -> None:
             "-depth",
             "8",
             "rgb:-",
-            str(DST_PATH),
+            "png:-",
         ],
         input=healed,
+    )
+    subprocess.run(
+        [
+            "cwebp",
+            "-q",
+            "88",
+            "-m",
+            "6",
+            "-o",
+            str(DST_PATH),
+            "--",
+            "-",
+        ],
+        input=png_bytes,
         check=True,
     )
     print(f"Generated {DST_PATH} (healed {healed_count} pixels)")

@@ -1,7 +1,8 @@
-import { Rectangle, Texture } from 'pixi.js';
+import { Rectangle, Texture, type TextureSource } from 'pixi.js';
 import { TWO_PI } from './constants';
 
 export interface SceneTextures {
+  atlasSource: TextureSource;
   cloudBand: Texture;
   mistBand: Texture;
   glow: Texture;
@@ -471,6 +472,7 @@ export function createSceneTextures(): SceneTextures {
   const lightningBolt = slice(384, 258, 124, 250);
 
   return {
+    atlasSource: source,
     cloudBand,
     mistBand,
     glow,
